@@ -19,6 +19,7 @@ SCOPES = ["Mail.Read"]
 ABUSEIPDB_API_KEY = "5c1ce2c76b7fc57ddbf6f448707803c2d388d95cf9d96f7adcd8ac3d68f223795fb35de075a0e3c8"
 METADEFENDER_API_KEY = "4ee3dbcf2b149b12764ae41d5cad9b50"
 
+IS_ON_RENDER = os.environ.get('RENDER') == 'true'
 # ✅ เพิ่มฟังก์ชันนี้เพื่อทำให้โปรแกรมหาไฟล์เจอเสมอ
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -33,7 +34,7 @@ def resource_path(relative_path):
 template_dir = resource_path('templates')
 app = Flask(__name__, template_folder=template_dir)
 msal_app = PublicClientApplication(CLIENT_ID, authority=AUTHORITY)
-pygame.mixer.init()
+if not IS_ON_RENDER: pygame.mixer.init()
 
 # ✅ แก้ไข Path ของไฟล์เสียงทั้งหมดให้ถูกต้อง
 SOUND_FILE_PATHS = {
@@ -67,6 +68,11 @@ def get_access_token():
     return result['access_token']
 
 def play_sound(sound_file_key):
+    # ✅ 3. เพิ่มเงื่อนไขเพื่อไม่ให้เล่นเสียงบน Render
+    if IS_ON_RENDER:
+        print(f"[SOUND DISABLED ON RENDER] Pretending to play: {sound_file_key}")
+        return
+    
     file_path = SOUND_FILE_PATHS.get(sound_file_key)
     if file_path and os.path.exists(file_path):
         try:
@@ -75,7 +81,7 @@ def play_sound(sound_file_key):
             pygame.mixer.music.play()
         except Exception as e:
             print(f"Error playing sound {file_path}: {e}")
-    else: 
+    else:
         print(f"Warning: Sound file not found for key '{sound_file_key}'.")
 
 def _perform_ip_scan(ip_address):
