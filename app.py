@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, redirect, session, url_for
+from flask import Flask, render_template, jsonify, request
 import threading
 import time
 import datetime
@@ -9,9 +9,9 @@ import os
 import collections
 import atexit
 from apscheduler.schedulers.background import BackgroundScheduler
-import uuid
+import sys # ✅ เพิ่มเข้ามา
 
-# === CONFIGURATION ===
+# === CONFIGURATION (คงไว้ตามที่คุณต้องการ) ===
 CLIENT_ID = "81a52509-4aa7-4060-ad96-4859d35701ba"
 TENANT_ID = "b96cc57b-d146-48f5-a381-7cf474c23a9e"
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
@@ -19,32 +19,41 @@ SCOPES = ["Mail.Read"]
 ABUSEIPDB_API_KEY = "5c1ce2c76b7fc57ddbf6f448707803c2d388d95cf9d96f7adcd8ac3d68f223795fb35de075a0e3c8"
 METADEFENDER_API_KEY = "4ee3dbcf2b149b12764ae41d5cad9b50"
 
+# ✅ เพิ่มฟังก์ชันนี้เพื่อทำให้โปรแกรมหาไฟล์เจอเสมอ
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 # --- INITIALIZATIONS & GLOBAL STATE ---
-app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a-super-secret-key-for-development") # ตั้งค่า Secret Key
+# ✅ แก้ไขการสร้าง app Flask ให้รู้จักโฟลเดอร์ templates
+template_dir = resource_path('templates')
+app = Flask(__name__, template_folder=template_dir)
 msal_app = PublicClientApplication(CLIENT_ID, authority=AUTHORITY)
 pygame.mixer.init()
 
+# ✅ แก้ไข Path ของไฟล์เสียงทั้งหมดให้ถูกต้อง
 SOUND_FILE_PATHS = {
-    "time_alert": "sounds/time_alert.mp3",
-    "mail_general": "sounds/mail_general.mp3",
-    "log_inspection_rule": "sounds/Log Inspection Rule.mp3",
-    "servicedesk_mail": "sounds/servicedesk.mp3",
-    "disk_space_mail": "sounds/disk space.mp3",
-    "workbench_mail": "sounds/Workbench.mp3",
-    "severity_mail": "sounds/ticket.mp3",
-    "o365_mail": "O365.mp3", # This file is not in the sounds folder as per user's request
-    "scheduled_scan_alert": "sounds/scheduled_scan.mp3"
+    "time_alert": resource_path("sounds/Sound Mad Unicorn ED _ สงคราม สงดวน ตอนจบ #เพลงจบสงครามสงดวน #madunicorn #สงครามสงดวน.mp3"),
+    "mail_general": resource_path("sounds/7-11-sound-thailand-VEED.mp3"),
+    "log_inspection_rule": resource_path("sounds/Log Inspection Rule.mp3"),
+    "servicedesk_mail": resource_path("sounds/servicedesk.mp3"),
+    "disk_space_mail": resource_path("sounds/disk space.mp3"),
+    "workbench_mail": resource_path("sounds/Workbench.mp3"),
+    "severity_mail": resource_path("sounds/ticket.mp3"),
+    "o365_mail": resource_path("O365.mp3"),
+    "scheduled_scan_alert": resource_path("sounds/scheduled_scan.mp3")
 }
-for key, path in SOUND_FILE_PATHS.items():
-    if not os.path.exists(path):
-        print(f"Warning: Sound file not found: {path}")
 
 folder_configs = [ {"name": "servicedesk", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAANL7i0AAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}, {"name": "inbox", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('Inbox')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}, {"name": "Log Inspection Rule", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAAZiWJlAAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}, {"name": "Workbench", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAAY1FmpAAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}, {"name": "no-reply-cloudone@trendmicro.com", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAAFgPaUAAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}, {"name": "Severity", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAANL7i1AAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}, {"name": "O365", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAAiOMdRAAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None} ]
 mail_logs = []
 current_access_token = None
-processed_email_ids = collections.deque(maxlen=20)
+processed_email_ids = collections.deque(maxlen=50)
 completed_scheduled_scans = collections.deque(maxlen=20)
+scheduler = BackgroundScheduler(daemon=True)
 
 # --- HELPER FUNCTIONS ---
 def get_access_token():
@@ -60,11 +69,15 @@ def get_access_token():
 def play_sound(sound_file_key):
     file_path = SOUND_FILE_PATHS.get(sound_file_key)
     if file_path and os.path.exists(file_path):
-        try: pygame.mixer.music.stop(); pygame.mixer.music.load(file_path); pygame.mixer.music.play()
-        except Exception as e: print(f"Error playing sound {file_path}: {e}")
-    else: print(f"Warning: Sound file not found for key '{sound_file_key}'.")
+        try:
+            pygame.mixer.music.stop()
+            pygame.mixer.music.load(file_path)
+            pygame.mixer.music.play()
+        except Exception as e:
+            print(f"Error playing sound {file_path}: {e}")
+    else: 
+        print(f"Warning: Sound file not found for key '{sound_file_key}'.")
 
-# ✅✅✅ แก้ไขฟังก์ชันนี้ให้คืนค่า Location และข้อมูล MetaDefender ให้ถูกต้อง
 def _perform_ip_scan(ip_address):
     abuse_results, metadefender_results = {}, {}
     try:
@@ -74,10 +87,7 @@ def _perform_ip_scan(ip_address):
         response = requests.get(url=abuse_url, headers=abuse_headers, params=abuse_querystring, timeout=10)
         response.raise_for_status()
         data = response.json().get('data', {})
-        city, region, country = data.get('city') or data.get('cityName'), data.get('region') or data.get('regionName'), data.get('countryName')
-        location_parts = [part for part in [city, region, country] if part]
-        full_location = ", ".join(location_parts) if location_parts else "N/A"
-        abuse_results = {'ipAddress': data.get('ipAddress', 'N/A'), 'score': data.get('abuseConfidenceScore', 0), 'reports': data.get('totalReports', 0), 'isp': data.get('isp', 'N/A'), 'usageType': data.get('usageType', 'N/A'), 'domain': data.get('domain', 'N/A'), 'countryName': data.get('countryName', 'N/A'), 'countryCode': data.get('countryCode', 'N/A'), 'location': full_location}
+        abuse_results = {'ipAddress': data.get('ipAddress', 'N/A'), 'score': data.get('abuseConfidenceScore', 0), 'reports': data.get('totalReports', 0), 'isp': data.get('isp', 'N/A'), 'usageType': data.get('usageType', 'N/A'), 'domain': data.get('domain', 'N/A'), 'countryName': data.get('countryName', 'N/A'), 'countryCode': data.get('countryCode', 'N/A')}
     except Exception as e:
         abuse_results = {'error': 'Failed to get data from AbuseIPDB.'}
     try:
@@ -104,9 +114,7 @@ def run_scheduled_scan(ip):
     play_sound("scheduled_scan_alert")
 
 def time_based_alert(alert_name):
-    log = f"⏰ [{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Fixed Time Alert: {alert_name}"
-    mail_logs.append(log)
-    print(log)
+    mail_logs.append(f"⏰ [{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Fixed Time Alert: {alert_name}")
     play_sound("time_alert")
 
 def check_mail_loop():
@@ -130,8 +138,7 @@ def check_mail_loop():
                 if not messages: continue
                 latest, latest_mail_id = messages[0], messages[0]['id']
                 if latest_mail_id != folder.get("last_id") and latest_mail_id not in processed_email_ids:
-                    subject = latest.get('subject', 'No Subject').lower()
-                    sender = latest.get('from', {}).get('emailAddress', {}).get('address', 'N/A')
+                    subject, sender = latest.get('subject', 'No Subject').lower(), latest.get('from', {}).get('emailAddress', {}).get('address', 'N/A')
                     now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     log_message, sound_key_to_play = None, None
                     if "resolve" in subject or "resolved" in subject: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Resolve/Resolved): {subject}"
@@ -139,19 +146,19 @@ def check_mail_loop():
                         if folder['name'] == 'servicedesk':
                             skip_words = ["daily report", "kaspersky security", "<risk alert> information", "resolve information"]
                             if any(word in subject for word in skip_words): log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Servicedesk Skip): {subject}"
-                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "servicedesk_mail"
+                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "servicedesk_mail"
                         elif folder['name'] == 'no-reply-cloudone@trendmicro.com':
-                            if "insufficient disk space detected" in subject: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "disk_space_mail"
+                            if "insufficient disk space detected" in subject: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "disk_space_mail"
                             else: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Cloudone Skip): {subject}"
                         elif folder['name'] == 'Log Inspection Rule':
                             if "resolve information" in subject or "<risk alert> information" in subject: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Log Inspection Skip): {subject}"
-                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "log_inspection_rule"
+                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "log_inspection_rule"
                         elif folder['name'] == 'Workbench':
                             if "resolve information" in subject or "<risk alert> information" in subject: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Workbench Skip): {subject}"
-                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "workbench_mail"
-                        elif folder['name'] == 'Severity': log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "severity_mail"
-                        elif folder['name'] == 'O365': log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "o365_mail"
-                        else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "mail_general"
+                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "workbench_mail"
+                        elif folder['name'] == 'Severity': log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "severity_mail"
+                        elif folder['name'] == 'O365': log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "o365_mail"
+                        else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "mail_general"
                     if log_message: mail_logs.append(log_message); print(log_message)
                     if sound_key_to_play: play_sound(sound_key_to_play)
                     processed_email_ids.append(latest_mail_id); folder["last_id"] = latest_mail_id
