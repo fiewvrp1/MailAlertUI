@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Mail & Time Alerts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #1a202c; color: #e2e8f0; }
+        .results-container::-webkit-scrollbar, .log-container::-webkit-scrollbar { width: 8px; }
+        .results-container::-webkit-scrollbar-track, .log-container::-webkit-scrollbar-track { background: #2d3748; }
+        .results-container::-webkit-scrollbar-thumb, .log-container::-webkit-scrollbar-thumb { background-color: #4a5568; border-radius: 10px; }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex items-center justify-center min-h-screen">
+    <div class="bg-gray-800 p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-5xl border border-gray-700">
+        <h1 class="text-4xl font-bold text-center text-teal-300 mb-8 tracking-wide">📬 Real-time Mail & Time Alerts</h1>
+        <div class="log-container border border-gray-600 rounded-lg p-4 bg-gray-900 shadow-inner h-96 overflow-y-auto">
+            <ul id="logList" class="space-y-3 text-sm text-gray-300"></ul>
+        </div>
+        <div class="mt-8 grid grid-cols-1 gap-6">
+            <div class="p-4 bg-gray-900 rounded-lg border border-gray-700">
+                <h2 class="text-xl font-bold text-teal-400 mb-3">IP Scanner (Manual)</h2>
+                <div class="flex items-center gap-3">
+                    <input type="text" id="ipInput" placeholder="Enter IP Address..." class="w-full bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none">
+                    <button id="scanButton" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-md">Scan IP</button>
+                </div>
+                <div id="scanResult" class="mt-4 text-gray-300 text-center min-h-[48px]">Enter an IP and click Scan to see the result.</div>
+            </div>
+            <div class="p-4 bg-gray-900 rounded-lg border border-gray-700 flex flex-col">
+                <h2 class="text-xl font-bold text-purple-400 mb-3">IP Scanner (Scheduled)</h2>
+                <div class="space-y-3">
+                    <input type="text" id="scheduleIpInput" placeholder="Enter IP Address..." class="w-full bg-gray-700 rounded-md p-2 border border-gray-600">
+                    <select id="scheduleTypeSelect" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600">
+                        <option value="daily">Every Day At</option>
+                        <option value="interval_minutes">Every X Minutes</option>
+                        <option value="interval_hours">Every X Hours</option>
+                    </select>
+                    <div id="dailyInputs" class="flex items-center gap-3">
+                        <input type="number" id="scheduleHourInput" placeholder="HH" min="0" max="23" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600">
+                        <span class="text-xl font-bold text-gray-500">:</span>
+                        <input type="number" id="scheduleMinuteInput" placeholder="MM" min="0" max="59" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600">
+                    </div>
+                    <div id="intervalInputs" class="hidden">
+                        <input type="number" id="scheduleIntervalValue" placeholder="e.g., 15 (minutes)" min="1" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600">
+                    </div>
+                    <button id="scheduleScanButton" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md">Add Schedule</button>
+                </div>
+                <div class="mt-4 border-t border-gray-700 pt-2 flex-grow flex flex-col min-h-0">
+                    <h3 class="text-sm font-bold text-gray-400 mb-2">Scheduled Jobs:</h3>
+                    <ul id="scheduledJobsList" class="space-y-2 text-xs text-gray-300 mb-2 overflow-y-auto"></ul>
+                    <h3 class="text-sm font-bold text-gray-400 mt-2 mb-2">Completed Scans:</h3>
+                    <div id="completedScansContainer" class="results-container space-y-2 flex-grow overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-8 text-center text-gray-400 text-base">Last updated: <span id="lastUpdated" class="font-semibold text-gray-300">N/A</span></div>
+    </div>
+<script>
+    const logListElement=document.getElementById('logList'),ipInputElement=document.getElementById('ipInput'),scanButtonElement=document.getElementById('scanButton'),scanResultElement=document.getElementById('scanResult'),scheduleIpInputElement=document.getElementById('scheduleIpInput'),scheduleHourInputElement=document.getElementById('scheduleHourInput'),scheduleMinuteInputElement=document.getElementById('scheduleMinuteInput'),scheduleScanButtonElement=document.getElementById('scheduleScanButton'),scheduledJobsListElement=document.getElementById('scheduledJobsList'),completedScansContainer=document.getElementById('completedScansContainer'),scheduleTypeSelect=document.getElementById('scheduleTypeSelect'),dailyInputs=document.getElementById('dailyInputs'),intervalInputs=document.getElementById('intervalInputs'),scheduleIntervalValue=document.getElementById('scheduleIntervalValue');
+    
+    // ✅ แก้ไขฟังก์ชันนี้ให้แสดงผลแบบ 2 กล่อง
+    async function performIpScan() {
+        const ip = ipInputElement.value.trim();
+        if (!ip) { scanResultElement.innerHTML = `<span class="text-yellow-400">Please enter an IP.</span>`; return; }
+        scanResultElement.innerHTML = `<div class="text-gray-400">Scanning ${ip}...</div>`;
+        scanButtonElement.disabled = true; scanButtonElement.textContent = 'Scanning...';
+        try {
+            const response = await fetch('/scan_ip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ip: ip }) });
+            const result = await response.json();
+            if (response.ok) {
+                const abuseData = result.abuseipdb;
+                const metaData = result.metadefender;
+                const countryCodeLower = abuseData.countryCode ? abuseData.countryCode.toLowerCase() : '';
+                scanResultElement.innerHTML = `
+                <div class="flex flex-col lg:flex-row gap-4 text-left">
+                    <div class="flex-1 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                        <h3 class="text-lg font-bold text-orange-400 mb-3"><a href="https://www.abuseipdb.com/check/${abuseData.ipAddress}" target="_blank" rel="noopener noreferrer" class="hover:underline">AbuseIPDB Report</a></h3>
+                        ${abuseData.error ? `<p class="text-red-400">${abuseData.error}</p>` : `
+                        <div class="space-y-2 text-sm">
+                            <p>Confidence of Abuse is <strong class="text-red-400">${abuseData.score}%</strong>. Reported <strong class="text-yellow-400">${abuseData.reports}</strong> times.</p>
+                            <div class="pt-2">
+                                <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">ISP</span> <span class="text-gray-200 text-right">${abuseData.isp}</span></div>
+                                <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">Location</span> <span class="text-gray-200 flex items-center justify-end">${abuseData.countryCode ? `<img src="https://flagcdn.com/w20/${countryCodeLower}.png" class="w-5 h-auto mr-2">` : ''}${abuseData.location}</span></div>
+                            </div>
+                        </div>`}
+                    </div>
+                    <div class="flex-1 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                         <h3 class="text-lg font-bold mb-3"><a href="https://metadefender.opswat.com/results/ip/${abuseData.ipAddress}" target="_blank" rel="noopener noreferrer" class="text-cyan-400 hover:underline">MetaDefender Cloud</a></h3>
+                         <div class="space-y-2 text-sm">
+                            <div class="flex justify-between border-t border-gray-600 pt-2"><span class="text-gray-400">Detection Rate</span> <span class="text-white font-bold">${metaData.error || metaData.detection_rate}</span></div>
+                         </div>
+                    </div>
+                </div>`;
+            } else { scanResultElement.innerHTML = `<div class="text-red-500">Error: ${result.error || 'Unknown error'}</div>`; }
+        } catch (error) { scanResultElement.innerHTML = `<div class="text-red-500">Error: Could not connect to the server.</div>`; }
+        finally { scanButtonElement.disabled = false; scanButtonElement.textContent = 'Scan IP'; }
+    }
+    
+    // ✅ แก้ไขฟังก์ชันนี้ให้แสดงผลจากทั้ง 2 API
+    async function fetchCompletedScans() {
+        try {
+            const response = await fetch('/get_completed_scans');
+            const completedScans = await response.json();
+            completedScansContainer.innerHTML = '';
+            if (completedScans.length === 0) { completedScansContainer.innerHTML = '<p class="text-xs text-gray-500">No scans have completed yet.</p>'; return; }
+            completedScans.forEach(result => {
+                const abuseData = result.abuseipdb;
+                const metaData = result.metadefender;
+                const card = document.createElement('div');
+                card.className = 'p-2 bg-gray-800 rounded-md text-xs';
+                let abuseScoreText = abuseData.error ? 'Error' : `${abuseData.score}%`;
+                let metaRateText = metaData.error ? 'Error' : metaData.detection_rate;
+                card.innerHTML = `<div class="flex justify-between items-center"><a href="https://www.abuseipdb.com/check/${abuseData.ipAddress}" target="_blank" rel="noopener noreferrer" class="font-bold text-cyan-400 hover:underline">${abuseData.ipAddress||'N/A'}</a><span class="text-gray-400">${result.completed_at}</span></div><div class="text-gray-300 text-xs mt-1"><span>Abuse Score: <strong class="text-red-400">${abuseScoreText}</strong></span> | <span>MD Rate: <strong class="text-yellow-400">${metaRateText}</strong></span></div>`;
+                completedScansContainer.appendChild(card);
+            });
+        } catch (error) { console.error('Error fetching completed scans:', error); }
+    }
+
+    // (ส่วนที่เหลือของ JavaScript เหมือนเดิมทั้งหมด)
+    function handleScheduleTypeChange(){if(scheduleTypeSelect.value==='daily'){dailyInputs.style.display='flex';intervalInputs.style.display='none';}else{dailyInputs.style.display='none';intervalInputs.style.display='block';if(scheduleTypeSelect.value==='interval_minutes'){scheduleIntervalValue.placeholder='e.g., 15 (minutes)';}else{scheduleIntervalValue.placeholder='e.g., 2 (hours)';}}}
+    function updateScheduledJobsList(jobs){scheduledJobsListElement.innerHTML='';if(!jobs||jobs.length===0){scheduledJobsListElement.innerHTML='<li class="text-gray-500">No jobs scheduled.</li>';return}
+    jobs.forEach(job=>{const listItem=document.createElement('li');listItem.className='flex justify-between items-center bg-gray-800 p-1 rounded';listItem.innerHTML=`<span>${job.ip} - ${job.schedule}</span> <button onclick="deleteJob('${job.id}')" class="text-red-500 hover:text-red-400 font-bold text-xs">DEL</button>`;scheduledJobsListElement.appendChild(listItem);});}
+    async function scheduleNewScan(){const ip=scheduleIpInputElement.value.trim();const type=scheduleTypeSelect.value;if(!ip){alert('Please enter an IP address.');return}
+    let payload={ip,type};if(type==='daily'){payload.hour=scheduleHourInputElement.value;payload.minute=scheduleMinuteInputElement.value;if(payload.hour===''||payload.minute===''){alert('Please enter Hour and Minute.');return}}else{payload.value=scheduleIntervalValue.value;if(!payload.value){alert('Please enter a value for the interval.');return}}
+    const response=await fetch('/schedule_scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await response.json();if(result.status==='success'){fetchScheduledJobs();}else{alert(`Error: ${result.message}`);}}
+    async function deleteJob(jobId){if(!confirm('Are you sure?'))return;const response=await fetch(`/delete_schedule/${jobId}`,{method:'DELETE'});const result=await response.json();if(result.status==='success'){fetchScheduledJobs();}else{alert(`Error deleting job: ${result.message}`);}}
+    async function fetchScheduledJobs(){const response=await fetch('/get_scheduled_scans');const jobs=await response.json();updateScheduledJobsList(jobs);}
+    async function fetchLogs(){try{const response=await fetch('/logs');const logs=await response.json();logListElement.innerHTML='';if(logs.length===0){logListElement.innerHTML='<li class="text-center text-gray-500 py-4">No logs to display yet.</li>';}else{logs.reverse().forEach(log=>{const listItem=document.createElement('li');let bgColor='bg-gray-700',borderColor='border-gray-600',icon='💬';if(log.startsWith('📧')){bgColor='bg-blue-900';borderColor='border-blue-800';icon='📧';}else if(log.startsWith('⏰')){bgColor='bg-green-900';borderColor='border-green-800';icon='⏰';}else if(log.startsWith('⚠️')){bgColor='bg-yellow-900';borderColor='border-yellow-800';icon='⚠️';}else if(log.startsWith('❌')){bgColor='bg-red-900';borderColor='border-red-800';icon='❌';}
+    listItem.className=`${bgColor} bg-opacity-30 p-3 rounded-md shadow-sm border ${borderColor} flex items-center space-x-2`;listItem.innerHTML=`<span class="text-lg">${icon}</span> <span>${log}</span>`;logListElement.appendChild(listItem);});}
+    document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch(error){console.error('Error fetching logs:',error);}}
+    scanButtonElement.addEventListener('click',performIpScan);ipInputElement.addEventListener('keyup',(e)=>e.key==='Enter'&&performIpScan());scheduleTypeSelect.addEventListener('change',handleScheduleTypeChange);scheduleScanButtonElement.addEventListener('click',scheduleNewScan);
+    document.addEventListener('DOMContentLoaded',()=>{fetchLogs();fetchScheduledJobs();fetchCompletedScans();handleScheduleTypeChange();});
+    setInterval(()=>{fetchLogs();fetchCompletedScans();},2000);
+</script>
+</body>
+</html>
