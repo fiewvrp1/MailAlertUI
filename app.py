@@ -11,13 +11,13 @@ import atexit
 from apscheduler.schedulers.background import BackgroundScheduler
 import uuid
 
-# === CONFIGURATION (อ่านจาก Environment Variables) ===
-CLIENT_ID = os.environ.get("CLIENT_ID")
-TENANT_ID = os.environ.get("TENANT_ID")
+# === CONFIGURATION ===
+CLIENT_ID = "81a52509-4aa7-4060-ad96-4859d35701ba"
+TENANT_ID = "b96cc57b-d146-48f5-a381-7cf474c23a9e"
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Mail.Read"]
-ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
-METADEFENDER_API_KEY = os.environ.get("METADEFENDER_API_KEY")
+ABUSEIPDB_API_KEY = "5c1ce2c76b7fc57ddbf6f448707803c2d388d95cf9d96f7adcd8ac3d68f223795fb35de075a0e3c8"
+METADEFENDER_API_KEY = "4ee3dbcf2b149b12764ae41d5cad9b50"
 
 # --- INITIALIZATIONS & GLOBAL STATE ---
 app = Flask(__name__)
