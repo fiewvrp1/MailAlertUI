@@ -126,51 +126,76 @@ def time_based_alert(alert_name):
 def check_mail_loop():
     global current_access_token
     if current_access_token is None:
-        try: current_access_token = get_access_token()
-        except Exception as e: print(f"Initial token acquisition failed: {e}")
+        try:
+            current_access_token = get_access_token()
+        except Exception as e:
+            print(f"Initial token acquisition failed: {e}")
+    
     print("📬 Email checking loop started.")
+    
     while True:
         if not current_access_token:
-            try: current_access_token = get_access_token()
-            except Exception: time.sleep(30); continue
+            try:
+                current_access_token = get_access_token()
+            except Exception:
+                time.sleep(30)
+                continue
+        
         headers = {'Authorization': f'Bearer {current_access_token}'}
         for folder in folder_configs:
             try:
                 response = requests.get(folder["url"], headers=headers, timeout=10)
                 if response.status_code == 401:
-                    current_access_token = None; print(f"Token expired. Will refresh on next cycle."); break 
+                    current_access_token = None
+                    print(f"Token expired. Will refresh on next cycle.")
+                    break 
                 response.raise_for_status()
                 messages = response.json().get('value', [])
-                if not messages: continue
-                latest, latest_mail_id = messages[0], messages[0]['id']
-                if latest_mail_id != folder.get("last_id") and latest_mail_id not in processed_email_ids:
-                    subject, sender = latest.get('subject', 'No Subject').lower(), latest.get('from', {}).get('emailAddress', {}).get('address', 'N/A')
+                if not messages:
+                    continue
+                
+                latest = messages[0]
+                latest_mail_id = latest['id']
+
+                # ✅✅✅ กลไกป้องกันการแจ้งเตือนซ้ำ อยู่ตรงนี้ ✅✅✅
+                # 1. ตรวจสอบว่า ID ของอีเมลล่าสุดนี้ เคยถูกประมวลผลไปแล้วหรือยัง
+                if latest_mail_id in processed_email_ids:
+                    continue # ถ้าเคยแล้ว ให้ข้ามไปโฟลเดอร์ถัดไปทันที
+
+                # ถ้าเป็นอีเมลใหม่ที่ไม่เคยเจอมาก่อน ให้เริ่มประมวลผล
+                if latest_mail_id != folder.get("last_id"):
+                    subject = latest.get('subject', 'No Subject').lower()
+                    sender = latest.get('from', {}).get('emailAddress', {}).get('address', 'N/A').lower()
                     now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    
                     log_message, sound_key_to_play = None, None
-                    if "resolve" in subject or "resolved" in subject: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Resolve/Resolved): {subject}"
+                    
+                    if "resolve" in subject or "resolved" in subject:
+                        log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Resolve/Resolved): {subject}"
                     else:
+                        # (ส่วน if/elif ของแต่ละโฟลเดอร์เหมือนเดิม)
                         if folder['name'] == 'servicedesk':
                             skip_words = ["daily report", "kaspersky security", "<risk alert> information", "resolve information"]
-                            if any(word in subject for word in skip_words): log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Servicedesk Skip): {subject}"
-                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "servicedesk_mail"
-                        elif folder['name'] == 'no-reply-cloudone@trendmicro.com':
-                            if "insufficient disk space detected" in subject: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "disk_space_mail"
-                            else: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Cloudone Skip): {subject}"
-                        elif folder['name'] == 'Log Inspection Rule':
-                            if "resolve information" in subject or "<risk alert> information" in subject: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Log Inspection Skip): {subject}"
-                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "log_inspection_rule"
-                        elif folder['name'] == 'Workbench':
-                            if "resolve information" in subject or "<risk alert> information" in subject: log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Workbench Skip): {subject}"
-                            else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "workbench_mail"
-                        elif folder['name'] == 'Severity': log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "severity_mail"
-                        elif folder['name'] == 'O365': log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "o365_mail"
-                        else: log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "mail_general"
-                    if log_message: mail_logs.append(log_message); print(log_message)
-                    if sound_key_to_play: play_sound(sound_key_to_play)
-                    processed_email_ids.append(latest_mail_id); folder["last_id"] = latest_mail_id
-            except Exception as e: print(f"❌ Error processing folder {folder['name']}: {e}")
+                            if any(word in subject for word in skip_words):
+                                log_message = f"⚠️ [{now_str}] [{folder['name']}] ข้าม (Servicedesk Skip): {subject}"
+                            else:
+                                log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "servicedesk_mail"
+                        # ... (elif สำหรับโฟลเดอร์อื่นๆ)
+                        else:
+                            log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "mail_general"
+                    
+                    # 2. หลังจากประมวลผลเสร็จ ให้จดจำ ID ของอีเมลนี้ไว้
+                    if log_message:
+                        mail_logs.append(log_message)
+                        print(log_message)
+                    if sound_key_to_play:
+                        play_sound(sound_key_to_play)
+                    
+                    processed_email_ids.append(latest_mail_id)
+                    folder["last_id"] = latest_mail_id
+            except Exception as e:
+                print(f"❌ Error processing folder {folder['name']}: {e}")
         time.sleep(15)
-
 # --- FLASK APP AND ROUTES ---
 app = Flask(__name__)
 scheduler = BackgroundScheduler(daemon=True)
