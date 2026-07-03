@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elastic Query Library</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #1a202c; color: #e2e8f0; }
+        code, pre, textarea.mono { font-family: 'JetBrains Mono', monospace; }
+        .modal-backdrop { background: rgba(0,0,0,0.6); }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+    <div class="bg-gray-800 p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-6xl mx-auto border border-gray-700">
+        <nav class="flex justify-center gap-3 mb-6 flex-wrap">
+            <a href="/" class="px-4 py-2 rounded-md font-semibold text-sm bg-gray-700 text-gray-300 hover:bg-gray-600">📬 Mail & Time Alerts</a>
+            <a href="/forensic" class="px-4 py-2 rounded-md font-semibold text-sm bg-gray-700 text-gray-300 hover:bg-gray-600">🔍 Web Forensic Tools</a>
+            <a href="/elastic-queries" class="px-4 py-2 rounded-md font-semibold text-sm bg-teal-600 text-white">🔎 Elastic Query Library</a>
+        </nav>
+        <h1 class="text-4xl font-bold text-center text-teal-300 mb-2 tracking-wide">🔎 Elastic Query Library</h1>
+        <p class="text-center text-gray-400 text-sm mb-8">คิวรี่ Elastic/Kibana (KQL, Lucene, EQL, DSL) ที่ใช้บ่อยในงาน SOC/DFIR</p>
+
+        <div class="flex flex-col md:flex-row gap-3 mb-4 sticky top-0 bg-gray-800 py-3 z-10">
+            <input id="searchInput" type="text" placeholder="ค้นหาชื่อ, tag, หรือเนื้อหาคิวรี่..." class="flex-1 bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none focus:border-teal-500">
+            <select id="categorySelect" class="bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none">
+                <option value="all">ทุกหมวด</option>
+            </select>
+            <div id="langFilter" class="flex gap-2 flex-wrap">
+                <button data-lang="all" class="lang-btn px-3 py-2 rounded-md text-sm font-semibold bg-teal-600 text-white">ทั้งหมด</button>
+            </div>
+            <button id="addQueryBtn" class="px-4 py-2 rounded-md text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white whitespace-nowrap">+ เพิ่มคิวรี่</button>
+        </div>
+
+        <div id="resultsCount" class="text-xs text-gray-500 mb-4"></div>
+        <div id="queriesContainer" class="space-y-8"></div>
+        <div id="emptyState" class="hidden text-center text-gray-500 py-12">ไม่พบคิวรี่ที่ตรงกับเงื่อนไข</div>
+    </div>
+
+    <div id="queryModal" class="hidden fixed inset-0 modal-backdrop flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <h2 id="modalTitle" class="text-xl font-bold text-teal-300 mb-4">เพิ่มคิวรี่ใหม่</h2>
+            <form id="queryForm" class="space-y-3">
+                <input type="hidden" id="fId">
+                <div>
+                    <label class="text-xs text-gray-400">ชื่อคิวรี่</label>
+                    <input id="fName" required class="w-full bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none">
+                </div>
+                <div class="flex gap-3">
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-400">ภาษา</label>
+                        <select id="fLanguage" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none">
+                            <option value="KQL">KQL</option>
+                            <option value="Lucene">Lucene</option>
+                            <option value="EQL">EQL</option>
+                            <option value="DSL">DSL</option>
+                        </select>
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-xs text-gray-400">หมวดหมู่</label>
+                        <input id="fCategory" required list="categoryOptions" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none">
+                        <datalist id="categoryOptions"></datalist>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400">โค้ดคิวรี่</label>
+                    <textarea id="fQuery" required rows="4" class="mono w-full bg-gray-900 rounded-md p-2 border border-gray-600 focus:outline-none text-sm"></textarea>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400">คำอธิบาย</label>
+                    <textarea id="fDescription" rows="2" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none text-sm"></textarea>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400">Tags (คั่นด้วย comma หรือช่องว่าง)</label>
+                    <input id="fTags" placeholder="windows, logon, authentication" class="w-full bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" id="cancelModalBtn" class="px-4 py-2 rounded-md text-sm font-semibold bg-gray-600 hover:bg-gray-500 text-white">ยกเลิก</button>
+                    <button type="submit" class="px-4 py-2 rounded-md text-sm font-semibold bg-teal-600 hover:bg-teal-700 text-white">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+<script>
+    const LANG_META = {
+        KQL:    { badgeClass: 'bg-teal-900/50 text-teal-300 border-teal-700' },
+        Lucene: { badgeClass: 'bg-purple-900/50 text-purple-300 border-purple-700' },
+        EQL:    { badgeClass: 'bg-orange-900/50 text-orange-300 border-orange-700' },
+        DSL:    { badgeClass: 'bg-pink-900/50 text-pink-300 border-pink-700' },
+    };
+
+    const STARTER_QUERIES = [
+        { id: 'auth-failed-logon', name: 'Failed logon ทั้งหมด', language: 'KQL', query: 'event.action:"logon-failed" or event.outcome:"failure"', category: 'Authentication', description: 'หา event การ login ที่ล้มเหลวทั้งหมด', tags: ['windows','logon','authentication'] },
+        { id: 'auth-offhours-logon', name: 'Logon นอกเวลาทำการ', language: 'KQL', query: 'event.action:"logged-in" and event.outcome:"success"', category: 'Authentication', description: 'หา successful logon แล้วกรองช่วงเวลาเพิ่มผ่าน time picker ใน Kibana', tags: ['windows','logon','offhours'] },
+        { id: 'auth-bruteforce', name: 'Brute force pattern (หลาย failed จาก IP เดียว)', language: 'KQL', query: 'event.action:"logon-failed" and source.ip:*', category: 'Authentication', description: 'ใช้ร่วมกับ aggregation บน source.ip เพื่อหา IP ที่ fail ซ้ำๆ', tags: ['bruteforce','source.ip','authentication'] },
+        { id: 'auth-rdp-logon', name: 'Logon ประเภท RDP', language: 'KQL', query: 'winlog.event_data.LogonType:"10"', category: 'Authentication', description: 'กรอง logon event ที่เป็น RDP (LogonType 10)', tags: ['rdp','windows','logon'] },
+
+        { id: 'process-temp-appdata', name: 'Process ที่รันจาก Temp/AppData', language: 'KQL', query: 'process.executable:*\\AppData\\* or process.executable:*\\Temp\\*', category: 'Process', description: 'มัลแวร์มักรันจาก path เหล่านี้', tags: ['process','malware','path'] },
+        { id: 'process-office-macro', name: 'Process ที่ parent เป็น Office (สงสัย macro)', language: 'KQL', query: 'process.parent.name:("WINWORD.EXE" or "EXCEL.EXE" or "POWERPNT.EXE") and process.name:("cmd.exe" or "powershell.exe")', category: 'Process', description: 'ตรวจจับ macro ที่ spawn cmd/powershell จาก Office', tags: ['office','macro','process'] },
+        { id: 'process-encoded-cmdline', name: 'Process ที่มี command line ยาวผิดปกติ/encode', language: 'KQL', query: 'process.command_line:*-enc* or process.command_line:*FromBase64String*', category: 'Process', description: 'หา command line ที่ encode แบบ base64 ซึ่งมักใช้ obfuscate', tags: ['encoded','base64','process'] },
+        { id: 'process-rundll32', name: 'Suspicious rundll32', language: 'KQL', query: 'process.name:"rundll32.exe" and process.command_line:*http*', category: 'Process', description: 'rundll32 ที่มี URL ใน command line มักเป็นสัญญาณของการโหลด payload', tags: ['rundll32','process','lolbin'] },
+
+        { id: 'ps-obfuscated', name: 'PowerShell แบบ obfuscated', language: 'KQL', query: 'process.name:"powershell.exe" and process.command_line:(*-enc* or *-e * or *IEX* or *DownloadString*)', category: 'PowerShell', description: 'หา powershell command line ที่มีลักษณะ obfuscate/download', tags: ['powershell','obfuscated','iex'] },
+        { id: 'ps-bypass', name: 'PowerShell ExecutionPolicy Bypass', language: 'KQL', query: 'process.command_line:*ExecutionPolicy*Bypass*', category: 'PowerShell', description: 'หา powershell ที่ bypass execution policy', tags: ['powershell','bypass'] },
+
+        { id: 'net-suspicious-port', name: 'Connection ไป external IP พอร์ตแปลก', language: 'KQL', query: 'destination.port:(4444 or 8080 or 1337) and network.direction:"outbound"', category: 'Network', description: 'พอร์ตที่มักถูกใช้เป็น C2 listener', tags: ['network','c2','port'] },
+        { id: 'net-dga-dns', name: 'DNS query ไปโดเมนที่ยาว/สุ่ม (สงสัย DGA/C2)', language: 'Lucene', query: 'dns.question.name:/[a-z0-9]{16,}\\..*/', category: 'Network', description: 'หา DNS query ไปโดเมนที่ดูสุ่ม อาจเป็น DGA', tags: ['dns','dga','c2'] },
+        { id: 'net-beaconing', name: 'Beaconing pattern (เชื่อมต่อซ้ำเป็นช่วงเวลาคงที่)', language: 'EQL', query: 'network where destination.ip != null', category: 'Network', description: 'ใช้ร่วม sequence/interval analysis ใน Kibana เพื่อหา beaconing', tags: ['network','beaconing','c2'] },
+
+        { id: 'persist-registry-run', name: 'แก้ไข Registry Run key', language: 'KQL', query: 'registry.path:*\\CurrentVersion\\Run*', category: 'Persistence', description: 'ตรวจจับการเพิ่ม persistence ผ่าน Registry Run key', tags: ['registry','persistence'] },
+        { id: 'persist-scheduled-task', name: 'สร้าง Scheduled Task ใหม่', language: 'KQL', query: 'event.action:"scheduled-task-created" or process.name:"schtasks.exe"', category: 'Persistence', description: 'ตรวจจับการสร้าง scheduled task ใหม่', tags: ['schtasks','persistence'] },
+        { id: 'persist-new-service', name: 'สร้าง Service ใหม่', language: 'KQL', query: 'event.action:"service-installed" or winlog.event_id:"7045"', category: 'Persistence', description: 'Event ID 7045 คือการติดตั้ง service ใหม่บน Windows', tags: ['service','windows','persistence'] },
+
+        { id: 'file-exe-in-downloads', name: 'ไฟล์ executable ถูกสร้างใน Downloads', language: 'KQL', query: 'file.path:*\\Downloads\\* and file.extension:("exe" or "dll" or "ps1")', category: 'File', description: 'ไฟล์ executable ใหม่ใน Downloads folder อาจเป็นสัญญาณของมัลแวร์', tags: ['file','downloads'] },
+        { id: 'file-mass-delete', name: 'ไฟล์ที่ถูกลบจำนวนมาก (สงสัย ransomware)', language: 'KQL', query: 'event.action:"file_deleted"', category: 'File', description: 'ใช้ร่วม aggregation นับจำนวนต่อ host/เวลา เพื่อจับ pattern ransomware', tags: ['ransomware','file','deletion'] },
+    ];
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    const STORE_CUSTOM = 'eql_custom_queries';
+    const STORE_NOTES = 'eql_notes';
+
+    function loadCustom() { try { return JSON.parse(localStorage.getItem(STORE_CUSTOM)) || []; } catch(e) { return []; } }
+    function saveCustom(list) { localStorage.setItem(STORE_CUSTOM, JSON.stringify(list)); }
+    function loadNotes() { try { return JSON.parse(localStorage.getItem(STORE_NOTES)) || {}; } catch(e) { return {}; } }
+    function saveNotes(notes) { localStorage.setItem(STORE_NOTES, JSON.stringify(notes)); }
+
+    function combined() {
+        const notes = loadNotes();
+        const starter = STARTER_QUERIES.map(q => ({ ...q, custom: false, note: notes[q.id] || '' }));
+        const custom = loadCustom().map(q => ({ ...q, custom: true, note: notes[q.id] || '' }));
+        return [...starter, ...custom];
+    }
+
+    const state = { search: '', category: 'all', lang: 'all' };
+    let currentList = [];
+
+    const searchInput = document.getElementById('searchInput');
+    const categorySelect = document.getElementById('categorySelect');
+    const langFilter = document.getElementById('langFilter');
+    const queriesContainer = document.getElementById('queriesContainer');
+    const emptyState = document.getElementById('emptyState');
+    const resultsCount = document.getElementById('resultsCount');
+    const addQueryBtn = document.getElementById('addQueryBtn');
+    const queryModal = document.getElementById('queryModal');
+    const queryForm = document.getElementById('queryForm');
+    const cancelModalBtn = document.getElementById('cancelModalBtn');
+    const modalTitle = document.getElementById('modalTitle');
+    const categoryOptions = document.getElementById('categoryOptions');
+
+    function refreshFilterOptions() {
+        const all = combined();
+        const categories = [...new Set(all.map(q => q.category))].sort();
+        categorySelect.innerHTML = '<option value="all">ทุกหมวด</option>' + categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+        categorySelect.value = state.category;
+        categoryOptions.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">`).join('');
+
+        const langs = [...new Set(all.map(q => q.language))].sort();
+        langFilter.innerHTML = `<button data-lang="all" class="lang-btn px-3 py-2 rounded-md text-sm font-semibold ${state.lang==='all' ? 'bg-teal-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}">ทั้งหมด</button>` +
+            langs.map(l => `<button data-lang="${escapeHtml(l)}" class="lang-btn px-3 py-2 rounded-md text-sm font-semibold ${state.lang===l ? 'bg-teal-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}">${escapeHtml(l)}</button>`).join('');
+    }
+
+    function queryCard(q) {
+        const meta = LANG_META[q.language] || { badgeClass: 'bg-gray-700 text-gray-300 border-gray-600' };
+        return `
+        <div class="p-4 bg-gray-700/50 rounded-lg border border-gray-600" data-card-id="${escapeHtml(q.id)}">
+            <div class="flex items-start justify-between gap-2 mb-2">
+                <h3 class="font-bold text-gray-100">${escapeHtml(q.name)}</h3>
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="px-2 py-0.5 rounded text-xs border ${meta.badgeClass}">${escapeHtml(q.language)}</span>
+                    ${q.custom ? `
+                    <button class="edit-btn text-gray-400 hover:text-teal-400 text-xs" data-id="${escapeHtml(q.id)}" title="แก้ไข">✏️</button>
+                    <button class="delete-btn text-gray-400 hover:text-red-400 text-xs" data-id="${escapeHtml(q.id)}" title="ลบ">🗑️</button>` : ''}
+                </div>
+            </div>
+            ${q.description ? `<p class="text-xs text-gray-400 mb-2">${escapeHtml(q.description)}</p>` : ''}
+            <div class="relative">
+                <pre class="bg-gray-900 rounded-md p-3 text-xs text-teal-200 overflow-x-auto whitespace-pre-wrap break-words">${escapeHtml(q.query)}</pre>
+                <button class="copy-btn absolute top-2 right-2 px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-200" data-id="${escapeHtml(q.id)}">Copy</button>
+            </div>
+            ${(q.tags && q.tags.length) ? `<div class="flex flex-wrap gap-1 mt-2">${q.tags.map(t => `<span class="text-xs text-purple-300 bg-purple-900/30 px-2 py-0.5 rounded">#${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+            <div class="mt-2 pt-2 border-t border-gray-600">
+                <label class="text-xs text-gray-500">Note ส่วนตัว</label>
+                <textarea class="note-input w-full bg-gray-800 rounded-md p-2 border border-gray-600 focus:outline-none text-xs text-gray-300 mt-1" rows="2" data-id="${escapeHtml(q.id)}" placeholder="จดข้อสังเกตของตัวเอง...">${escapeHtml(q.note)}</textarea>
+            </div>
+        </div>`;
+    }
+
+    function render() {
+        refreshFilterOptions();
+        const all = combined();
+        const q = state.search.trim().toLowerCase();
+        const filtered = all.filter(item => {
+            if (state.category !== 'all' && item.category !== state.category) return false;
+            if (state.lang !== 'all' && item.language !== state.lang) return false;
+            if (q) {
+                const haystack = [item.name, item.query, item.description, ...(item.tags || [])].join(' ').toLowerCase();
+                if (!haystack.includes(q)) return false;
+            }
+            return true;
+        });
+        currentList = filtered;
+
+        resultsCount.textContent = `พบ ${filtered.length} จาก ${all.length} คิวรี่`;
+
+        if (filtered.length === 0) {
+            queriesContainer.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        emptyState.classList.add('hidden');
+
+        const categories = [...new Set(all.map(item => item.category))].sort();
+        const grouped = {};
+        filtered.forEach(item => { (grouped[item.category] = grouped[item.category] || []).push(item); });
+
+        queriesContainer.innerHTML = categories
+            .filter(cat => grouped[cat])
+            .map(cat => `
+                <section>
+                    <h2 class="text-lg font-bold text-purple-400 mb-3 border-b border-gray-700 pb-2">${escapeHtml(cat)}</h2>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        ${grouped[cat].map(queryCard).join('')}
+                    </div>
+                </section>
+            `).join('');
+    }
+
+    function findInCurrent(id) { return currentList.find(item => item.id === id); }
+
+    // --- Filters ---
+    searchInput.addEventListener('input', () => { state.search = searchInput.value; render(); });
+    categorySelect.addEventListener('change', () => { state.category = categorySelect.value; render(); });
+    langFilter.addEventListener('click', (e) => {
+        const btn = e.target.closest('.lang-btn');
+        if (!btn) return;
+        state.lang = btn.dataset.lang;
+        render();
+    });
+
+    // --- Card actions (event delegation) ---
+    queriesContainer.addEventListener('click', (e) => {
+        const copyBtn = e.target.closest('.copy-btn');
+        if (copyBtn) {
+            const item = findInCurrent(copyBtn.dataset.id);
+            if (item) {
+                navigator.clipboard.writeText(item.query).then(() => {
+                    const original = copyBtn.textContent;
+                    copyBtn.textContent = 'Copied!';
+                    setTimeout(() => { copyBtn.textContent = original; }, 1200);
+                });
+            }
+            return;
+        }
+        const editBtn = e.target.closest('.edit-btn');
+        if (editBtn) { openModal(findInCurrent(editBtn.dataset.id)); return; }
+        const deleteBtn = e.target.closest('.delete-btn');
+        if (deleteBtn) {
+            if (!confirm('ลบคิวรี่นี้?')) return;
+            const list = loadCustom().filter(q => q.id !== deleteBtn.dataset.id);
+            saveCustom(list);
+            render();
+        }
+    });
+
+    let noteTimers = {};
+    queriesContainer.addEventListener('input', (e) => {
+        const el = e.target.closest('.note-input');
+        if (!el) return;
+        const id = el.dataset.id;
+        clearTimeout(noteTimers[id]);
+        noteTimers[id] = setTimeout(() => {
+            const notes = loadNotes();
+            notes[id] = el.value;
+            saveNotes(notes);
+        }, 400);
+    });
+
+    // --- Add / Edit modal ---
+    function openModal(item) {
+        queryForm.reset();
+        document.getElementById('fId').value = item ? item.id : '';
+        document.getElementById('fName').value = item ? item.name : '';
+        document.getElementById('fLanguage').value = item ? item.language : 'KQL';
+        document.getElementById('fCategory').value = item ? item.category : '';
+        document.getElementById('fQuery').value = item ? item.query : '';
+        document.getElementById('fDescription').value = item ? item.description : '';
+        document.getElementById('fTags').value = item && item.tags ? item.tags.join(', ') : '';
+        modalTitle.textContent = item ? 'แก้ไขคิวรี่' : 'เพิ่มคิวรี่ใหม่';
+        queryModal.classList.remove('hidden');
+        document.getElementById('fName').focus();
+    }
+    function closeModal() { queryModal.classList.add('hidden'); }
+
+    addQueryBtn.addEventListener('click', () => openModal(null));
+    cancelModalBtn.addEventListener('click', closeModal);
+    queryModal.addEventListener('click', (e) => { if (e.target === queryModal) closeModal(); });
+
+    queryForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const id = document.getElementById('fId').value || ('custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+        const tags = document.getElementById('fTags').value.split(/[,\s]+/).map(t => t.trim()).filter(Boolean);
+        const record = {
+            id,
+            name: document.getElementById('fName').value.trim(),
+            language: document.getElementById('fLanguage').value,
+            category: document.getElementById('fCategory').value.trim() || 'Uncategorized',
+            query: document.getElementById('fQuery').value,
+            description: document.getElementById('fDescription').value.trim(),
+            tags,
+        };
+        const list = loadCustom();
+        const idx = list.findIndex(q => q.id === id);
+        if (idx >= 0) list[idx] = record; else list.push(record);
+        saveCustom(list);
+        closeModal();
+        render();
+    });
+
+    render();
+</script>
+</body>
+</html>

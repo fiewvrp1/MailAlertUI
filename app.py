@@ -312,6 +312,8 @@ def check_mail_loop():
 def index(): return render_template("index.html")
 @app.route("/forensic")
 def forensic(): return render_template("forensic.html")
+@app.route("/elastic-queries")
+def elastic_queries(): return render_template("elastic_queries.html")
 @app.route("/logs")
 def logs(): return jsonify(mail_logs[-50:])
 @app.route('/get_completed_scans')
