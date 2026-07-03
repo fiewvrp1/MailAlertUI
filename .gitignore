@@ -7,3 +7,7 @@ build/
 dist/
 *.spec
 *.log
+
+# Password Vault encrypted backups — never commit these even though they're encrypted
+password-vault-backup*.json
+*.vault.json
