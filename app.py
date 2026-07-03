@@ -173,7 +173,21 @@ def _perform_ip_scan(ip_address):
         data = response.json()
         if data and data.get('lookup_results') and data['lookup_results'].get('sources'):
             lookup = data.get('lookup_results', {}); detected_by, total_engines = lookup.get('detected_by', 0), len(lookup.get('sources', []))
-            metadefender_results = {'detection_rate': f"{detected_by} / {total_engines} engines"}
+            geo = data.get('geo_info', {}) or {}
+            sources = [{
+                'provider': s.get('provider'),
+                'assessment': s.get('assessment'),
+                'updateTime': s.get('update_time'),
+            } for s in lookup.get('sources', []) if s.get('assessment')]
+            metadefender_results = {
+                'detection_rate': f"{detected_by} / {total_engines} engines",
+                'country': (geo.get('country') or {}).get('name'),
+                'city': (geo.get('city') or {}).get('name'),
+                'organization': geo.get('organization'),
+                'carrier': geo.get('carrier'),
+                'asn': geo.get('asn'),
+                'sources': sources,
+            }
         else:
             metadefender_results = {'error': 'No data found for this IP.'}
     except Exception as e:

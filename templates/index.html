@@ -165,9 +165,10 @@
                     ${notes.map(n => `<span class="px-2 py-1 rounded bg-yellow-900/50 text-yellow-300 text-xs border border-yellow-700">⚠️ ${escapeHtml(n)}</span>`).join('')}
                 </div>` : '';
 
-                const reportsHtml = (abuseData.recentReports && abuseData.recentReports.length) ? `
+                const reportsHtml = `
                 <div class="pt-2 mt-2 border-t border-gray-600">
-                    <p class="text-gray-400 text-xs mb-2">Recent Reports (${abuseData.reports} total${abuseData.numDistinctUsers ? `, ${abuseData.numDistinctUsers} users` : ''})</p>
+                    <p class="text-gray-400 text-xs mb-2">Recent Reports (${abuseData.reports || 0} total${abuseData.numDistinctUsers ? `, ${abuseData.numDistinctUsers} users` : ''})</p>
+                    ${(abuseData.recentReports && abuseData.recentReports.length) ? `
                     <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
                         ${abuseData.recentReports.map(r => `
                         <div class="bg-gray-800/60 rounded p-2 text-xs">
@@ -178,8 +179,8 @@
                             ${r.categories.length ? `<div class="text-yellow-400 mt-1">${escapeHtml(r.categories.join(', '))}</div>` : ''}
                             ${r.comment ? `<div class="text-gray-300 mt-1 break-words">${escapeHtml(r.comment)}</div>` : ''}
                         </div>`).join('')}
-                    </div>
-                </div>` : '';
+                    </div>` : `<p class="text-xs text-gray-500">ไม่พบรายงานสำหรับ IP นี้ใน AbuseIPDB</p>`}
+                </div>`;
 
                 scanResultElement.innerHTML = `
                 ${notesHtml}
@@ -202,9 +203,30 @@
                     </div>
                     <div class="flex-1 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
                          <h3 class="text-lg font-bold mb-3"><a href="https://metadefender.opswat.com/results/ip/${abuseData.ipAddress}" target="_blank" rel="noopener noreferrer" class="text-cyan-400 hover:underline">MetaDefender Cloud</a></h3>
+                         ${metaData.error ? `<p class="text-red-400 text-sm">${escapeHtml(metaData.error)}</p>` : `
                          <div class="space-y-2 text-sm">
-                             <div class="flex justify-between border-t border-gray-600 pt-2"><span class="text-gray-400">Detection Rate</span> <span class="text-white font-bold">${metaData.error || metaData.detection_rate}</span></div>
-                         </div>
+                             <div class="flex justify-between border-t border-gray-600 pt-2"><span class="text-gray-400">Detection Rate</span> <span class="text-white font-bold">${escapeHtml(metaData.detection_rate)}</span></div>
+                             <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">Organization</span> <span class="text-gray-200 text-right">${escapeHtml(metaData.organization || 'N/A')}</span></div>
+                             <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">Carrier</span> <span class="text-gray-200 text-right">${escapeHtml(metaData.carrier || 'N/A')}</span></div>
+                             <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">Location</span> <span class="text-gray-200 text-right">${escapeHtml([metaData.city, metaData.country].filter(Boolean).join(', ') || 'N/A')}</span></div>
+                             <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">ASN</span> <span class="text-gray-200 text-right">${metaData.asn ? `AS${metaData.asn}` : 'N/A'}</span></div>
+                             <div class="pt-2 mt-2 border-t border-gray-600">
+                                 <p class="text-gray-400 text-xs mb-2">Source Assessments (${(metaData.sources || []).length})</p>
+                                 ${(metaData.sources && metaData.sources.length) ? `
+                                 <div class="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                     ${metaData.sources.map(s => {
+                                         const a = (s.assessment || '').toLowerCase();
+                                         const cls = a.includes('malicious') ? 'bg-red-900/50 text-red-300 border-red-700'
+                                                    : a.includes('suspicious') ? 'bg-yellow-900/50 text-yellow-300 border-yellow-700'
+                                                    : 'bg-green-900/50 text-green-300 border-green-700';
+                                         return `<div class="flex justify-between items-center bg-gray-800/60 rounded p-2 text-xs">
+                                             <span class="text-gray-300">${escapeHtml(s.provider || 'Unknown')}</span>
+                                             <span class="px-2 py-0.5 rounded border ${cls}">${escapeHtml(s.assessment)}</span>
+                                         </div>`;
+                                     }).join('')}
+                                 </div>` : `<p class="text-xs text-gray-500">ไม่มี source ที่ระบุผลการประเมิน</p>`}
+                             </div>
+                         </div>`}
                     </div>
                 </div>`;
             } else { scanResultElement.innerHTML = `<div class="text-red-500">Error: ${result.error || 'Unknown error'}</div>`; }
