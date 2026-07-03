@@ -33,7 +33,7 @@
             <button id="addQueryBtn" class="px-4 py-2 rounded-md text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white whitespace-nowrap">+ เพิ่มคิวรี่</button>
         </div>
 
-        <div id="resultsCount" class="text-xs text-gray-500 mb-4"></div>
+        <div id="resultsCount" class="text-xs text-gray-500 mb-4 flex items-center gap-3"></div>
         <div id="queriesContainer" class="space-y-8"></div>
         <div id="emptyState" class="hidden text-center text-gray-500 py-12">ไม่พบคิวรี่ที่ตรงกับเงื่อนไข</div>
     </div>
@@ -130,9 +130,14 @@
     function loadNotes() { try { return JSON.parse(localStorage.getItem(STORE_NOTES)) || {}; } catch(e) { return {}; } }
     function saveNotes(notes) { localStorage.setItem(STORE_NOTES, JSON.stringify(notes)); }
 
+    const STORE_HIDDEN = 'eql_hidden_starter';
+    function loadHidden() { try { return JSON.parse(localStorage.getItem(STORE_HIDDEN)) || []; } catch(e) { return []; } }
+    function saveHidden(list) { localStorage.setItem(STORE_HIDDEN, JSON.stringify(list)); }
+
     function combined() {
         const notes = loadNotes();
-        const starter = STARTER_QUERIES.map(q => ({ ...q, custom: false, note: notes[q.id] || '' }));
+        const hidden = new Set(loadHidden());
+        const starter = STARTER_QUERIES.filter(q => !hidden.has(q.id)).map(q => ({ ...q, custom: false, note: notes[q.id] || '' }));
         const custom = loadCustom().map(q => ({ ...q, custom: true, note: notes[q.id] || '' }));
         return [...starter, ...custom];
     }
@@ -173,9 +178,8 @@
                 <h3 class="font-bold text-gray-100">${escapeHtml(q.name)}</h3>
                 <div class="flex items-center gap-2 shrink-0">
                     <span class="px-2 py-0.5 rounded text-xs border ${meta.badgeClass}">${escapeHtml(q.language)}</span>
-                    ${q.custom ? `
-                    <button class="edit-btn text-gray-400 hover:text-teal-400 text-xs" data-id="${escapeHtml(q.id)}" title="แก้ไข">✏️</button>
-                    <button class="delete-btn text-gray-400 hover:text-red-400 text-xs" data-id="${escapeHtml(q.id)}" title="ลบ">🗑️</button>` : ''}
+                    ${q.custom ? `<button class="edit-btn text-gray-400 hover:text-teal-400 text-xs" data-id="${escapeHtml(q.id)}" title="แก้ไข">✏️</button>` : ''}
+                    <button class="delete-btn text-gray-400 hover:text-red-400 text-xs" data-id="${escapeHtml(q.id)}" data-custom="${q.custom}" title="ลบ">🗑️</button>
                 </div>
             </div>
             ${q.description ? `<p class="text-xs text-gray-400 mb-2">${escapeHtml(q.description)}</p>` : ''}
@@ -206,7 +210,9 @@
         });
         currentList = filtered;
 
-        resultsCount.textContent = `พบ ${filtered.length} จาก ${all.length} คิวรี่`;
+        const hiddenCount = loadHidden().length;
+        resultsCount.innerHTML = `<span>พบ ${filtered.length} จาก ${all.length} คิวรี่</span>` +
+            (hiddenCount ? `<button id="restoreHiddenBtn" class="text-teal-400 hover:underline">กู้คืนคิวรี่เริ่มต้นที่ลบไป (${hiddenCount})</button>` : '');
 
         if (filtered.length === 0) {
             queriesContainer.innerHTML = '';
@@ -232,6 +238,12 @@
     }
 
     function findInCurrent(id) { return currentList.find(item => item.id === id); }
+
+    resultsCount.addEventListener('click', (e) => {
+        if (!e.target.closest('#restoreHiddenBtn')) return;
+        saveHidden([]);
+        render();
+    });
 
     // --- Filters ---
     searchInput.addEventListener('input', () => { state.search = searchInput.value; render(); });
@@ -262,8 +274,14 @@
         const deleteBtn = e.target.closest('.delete-btn');
         if (deleteBtn) {
             if (!confirm('ลบคิวรี่นี้?')) return;
-            const list = loadCustom().filter(q => q.id !== deleteBtn.dataset.id);
-            saveCustom(list);
+            const id = deleteBtn.dataset.id;
+            if (deleteBtn.dataset.custom === 'true') {
+                saveCustom(loadCustom().filter(q => q.id !== id));
+            } else {
+                const hidden = loadHidden();
+                if (!hidden.includes(id)) hidden.push(id);
+                saveHidden(hidden);
+            }
             render();
         }
     });
