@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Forensic Tools Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #1a202c; color: #e2e8f0; }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+    <div class="bg-gray-800 p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-6xl mx-auto border border-gray-700">
+        <nav class="flex justify-center gap-3 mb-6">
+            <a href="/" class="px-4 py-2 rounded-md font-semibold text-sm bg-gray-700 text-gray-300 hover:bg-gray-600">📬 Mail & Time Alerts</a>
+            <a href="/forensic" class="px-4 py-2 rounded-md font-semibold text-sm bg-teal-600 text-white">🔍 Web Forensic Tools</a>
+        </nav>
+        <h1 class="text-4xl font-bold text-center text-teal-300 mb-2 tracking-wide">🔍 DFIR / SOC Forensic Tools Hub</h1>
+        <p class="text-center text-gray-400 text-sm mb-8">รวมเครื่องมือ Digital Forensics / SOC ที่คัดกรองสถานะฟรีแล้ว</p>
+
+        <div class="flex flex-col md:flex-row gap-3 mb-6 sticky top-0 bg-gray-800 py-3 z-10">
+            <input id="searchInput" type="text" placeholder="ค้นหาเครื่องมือ..." class="flex-1 bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none focus:border-teal-500">
+            <select id="categorySelect" class="bg-gray-700 rounded-md p-2 border border-gray-600 focus:outline-none">
+                <option value="all">ทุกหมวด</option>
+            </select>
+            <div id="statusFilter" class="flex gap-2">
+                <button data-status="all" class="status-btn px-3 py-2 rounded-md text-sm font-semibold bg-teal-600 text-white">ทั้งหมด</button>
+                <button data-status="green" class="status-btn px-3 py-2 rounded-md text-sm font-semibold bg-gray-700 text-gray-300 hover:bg-gray-600">🟢 ฟรี</button>
+                <button data-status="yellow" class="status-btn px-3 py-2 rounded-md text-sm font-semibold bg-gray-700 text-gray-300 hover:bg-gray-600">🟡 Freemium</button>
+                <button data-status="red" class="status-btn px-3 py-2 rounded-md text-sm font-semibold bg-gray-700 text-gray-300 hover:bg-gray-600">🔴 ระวัง</button>
+            </div>
+        </div>
+
+        <div id="resultsCount" class="text-xs text-gray-500 mb-4"></div>
+        <div id="toolsContainer" class="space-y-8"></div>
+        <div id="emptyState" class="hidden text-center text-gray-500 py-12">ไม่พบเครื่องมือที่ตรงกับเงื่อนไข</div>
+    </div>
+
+<script>
+    const STATUS_META = {
+        green:  { label: '🟢 ฟรี 100%', badgeClass: 'bg-green-900/50 text-green-300 border-green-700' },
+        yellow: { label: '🟡 Freemium', badgeClass: 'bg-yellow-900/50 text-yellow-300 border-yellow-700' },
+        red:    { label: '🔴 ต้องระวัง', badgeClass: 'bg-red-900/50 text-red-300 border-red-700' },
+    };
+
+    const TOOLS = [
+        { name: "Autopsy", url: "https://www.autopsy.com/", category: "Host / Endpoint Forensics", status: "green", note: "Open source เต็มรูปแบบ" },
+        { name: "Eric Zimmerman's Tools", url: "https://ericzimmerman.github.io/#!index.md", category: "Host / Endpoint Forensics", status: "green", note: "ฟรีทั้งชุด (Registry Explorer, Timeline Explorer, MFTECmd ฯลฯ)" },
+        { name: "KAPE", url: "https://www.kroll.com/en/services/cyber-risk/incident-response-litigation-support/kroll-artifact-parser-extractor-kape", category: "Host / Endpoint Forensics", status: "green", note: "ฟรีสำหรับใช้งานทั่วไป (มีเงื่อนไขลิขสิทธิ์การแจกจ่ายซ้ำ ควรอ่าน EULA)" },
+        { name: "Sleuth Kit", url: "https://www.sleuthkit.org/", category: "Host / Endpoint Forensics", status: "green", note: "Open source" },
+        { name: "CyberChef", url: "https://gchq.github.io/CyberChef/", category: "Host / Endpoint Forensics", status: "green", note: "ฟรี ใช้ผ่านเบราว์เซอร์ ไม่ต้องสมัคร" },
+
+        { name: "Volatility 3", url: "https://volatilityfoundation.org/", category: "Memory Forensics", status: "green", note: "Open source มาตรฐานวงการ" },
+        { name: "Redline (Mandiant)", url: null, category: "Memory Forensics", status: "red", note: "Mandiant/Google เลิกซัพพอร์ต/ถอดออกจากช่องทางดาวน์โหลดอย่างเป็นทางการแล้ว เว็บที่ยังให้โหลดส่วนใหญ่เป็น third-party mirror — ควรหลีกเลี่ยงหรือใช้ด้วยความระมัดระวัง แนะนำใช้ Volatility 3 แทน" },
+
+        { name: "Wireshark", url: "https://www.wireshark.org/", category: "Network Forensics", status: "green", note: "Open source" },
+        { name: "Zeek", url: "https://zeek.org/", category: "Network Forensics", status: "green", note: "Open source" },
+        { name: "NetworkMiner", url: "https://www.netresec.com/?page=NetworkMiner", category: "Network Forensics", status: "yellow", note: "เวอร์ชัน Free ใช้ได้จริง แต่ฟีเจอร์ขั้นสูงอยู่ใน Professional (จ่ายเงิน)" },
+        { name: "SOF-ELK (SANS)", url: "https://for572.com/sof-elk-readme", category: "Network Forensics", status: "green", note: "ฟรี ต้องสมัคร SANS account เพื่อโหลด (ไม่มีค่าใช้จ่าย)" },
+
+        { name: "Splunk Free", url: "https://www.splunk.com/en_us/download.html", category: "Log & SIEM", status: "yellow", note: "ฟรีจริงแต่จำกัด 500MB/วัน ใช้ฝึกได้ ไม่เหมาะ production จริงจัง" },
+        { name: "ELK Stack (Elastic)", url: "https://www.elastic.co/elastic-stack", category: "Log & SIEM", status: "green", note: "Self-host ฟรี (บาง feature ขั้นสูงอยู่ใน paid tier)" },
+        { name: "Security Onion", url: "https://securityonionsolutions.com/", category: "Log & SIEM", status: "green", note: "Open source ครบชุด (Zeek+Suricata+ELK)" },
+
+        { name: "ANY.RUN", url: "https://any.run/", category: "Malware Analysis", status: "yellow", note: "Free tier ใช้ได้ แต่จำกัดจำนวน/ผลลัพธ์เป็น public" },
+        { name: "VirusTotal", url: "https://www.virustotal.com/", category: "Malware Analysis", status: "yellow", note: "ฟรีสำหรับใช้งานทั่วไป แต่ API มี rate limit ชัดเจน" },
+        { name: "Hybrid Analysis", url: "https://www.hybrid-analysis.com/", category: "Malware Analysis", status: "yellow", note: "ฟรีแต่ต้องสมัครสมาชิก และมีเงื่อนไขการใช้เชิงพาณิชย์" },
+        { name: "Ghidra", url: "https://ghidra-sre.org/", category: "Malware Analysis", status: "green", note: "Open source จาก NSA" },
+        { name: "PEStudio", url: "https://www.winitor.com/", category: "Malware Analysis", status: "yellow", note: "เวอร์ชัน Free ใช้ได้ (ห้ามใช้เชิงพาณิชย์) ฟีเจอร์เต็มอยู่ใน Pro" },
+
+        { name: "Microsoft Sentinel/Defender", url: "https://learn.microsoft.com/en-us/azure/sentinel/", category: "Cloud & Email Forensics", status: "red", note: "Free trial เท่านั้น ไม่ใช่ฟรีถาวร ต้องมี Azure subscription" },
+        { name: "AWS CloudTrail", url: "https://aws.amazon.com/cloudtrail/", category: "Cloud & Email Forensics", status: "yellow", note: "ฟรีในระดับ event history พื้นฐาน แต่เก็บ log ยาว/advanced query มีค่าใช้จ่าย" },
+        { name: "PhishTool", url: "https://www.phishtool.com/", category: "Cloud & Email Forensics", status: "yellow", note: "มี Community edition ฟรี ฟีเจอร์เต็มอยู่ใน paid" },
+
+        { name: "Malware-Traffic-Analysis.net", url: "https://www.malware-traffic-analysis.net/", category: "เว็บฝึกจริง (Hands-on)", status: "green", note: "pcap ตัวอย่างฟรีทั้งหมด ไม่ต้องสมัคร" },
+        { name: "DFIR.training", url: "https://www.dfir.training/", category: "เว็บฝึกจริง (Hands-on)", status: "green", note: "รวมลิงก์ฟรีเป็นหลัก" },
+        { name: "DFIR Diva", url: "https://dfirdiva.com/", category: "เว็บฝึกจริง (Hands-on)", status: "green", note: "รวม training ฟรี/ราคาถูก จัดหมวดให้" },
+        { name: "13Cubed (YouTube)", url: "https://www.youtube.com/@13Cubed", category: "เว็บฝึกจริง (Hands-on)", status: "green", note: "คอนเทนต์ฟรีล้วน" },
+        { name: "CyberDefenders.org", url: "https://cyberdefenders.org/", category: "เว็บฝึกจริง (Hands-on)", status: "yellow", note: "มีโจทย์ฟรีบางส่วน ที่เหลือเป็น paid" },
+        { name: "LetsDefend.io", url: "https://letsdefend.io/", category: "เว็บฝึกจริง (Hands-on)", status: "yellow", note: "มี free tier แต่ฟีเจอร์ Alert/Lab เต็มอยู่ใน paid plan" },
+        { name: "TryHackMe", url: "https://tryhackme.com/", category: "เว็บฝึกจริง (Hands-on)", status: "yellow", note: "Free room มีจำกัด ห้อง SOC/Blue Team ส่วนใหญ่ต้อง subscribe" },
+        { name: "BlueTeamLabs Online", url: "https://blueteamlabs.online/", category: "เว็บฝึกจริง (Hands-on)", status: "yellow", note: "มี free tier จำกัด lab" },
+    ];
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    const state = { search: '', category: 'all', status: 'all' };
+
+    const categorySelect = document.getElementById('categorySelect');
+    const searchInput = document.getElementById('searchInput');
+    const statusFilter = document.getElementById('statusFilter');
+    const toolsContainer = document.getElementById('toolsContainer');
+    const emptyState = document.getElementById('emptyState');
+    const resultsCount = document.getElementById('resultsCount');
+
+    const categories = [...new Set(TOOLS.map(t => t.category))];
+    categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        categorySelect.appendChild(opt);
+    });
+
+    function toolCard(tool) {
+        const meta = STATUS_META[tool.status];
+        const inner = `
+            <div class="flex items-start justify-between gap-2 mb-2">
+                <h3 class="font-bold text-gray-100">${escapeHtml(tool.name)}</h3>
+                <span class="shrink-0 px-2 py-0.5 rounded text-xs border ${meta.badgeClass}">${meta.label}</span>
+            </div>
+            <p class="text-xs text-gray-400 leading-relaxed">${escapeHtml(tool.note)}</p>
+        `;
+        if (tool.url) {
+            return `<a href="${encodeURI(tool.url)}" target="_blank" rel="noopener noreferrer" class="block p-4 bg-gray-700/50 rounded-lg border border-gray-600 hover:border-teal-500 hover:bg-gray-700 transition-colors">${inner}</a>`;
+        }
+        return `<div class="p-4 bg-gray-700/30 rounded-lg border border-gray-700 opacity-80 cursor-not-allowed">${inner}</div>`;
+    }
+
+    function render() {
+        const q = state.search.trim().toLowerCase();
+        const filtered = TOOLS.filter(t => {
+            if (state.category !== 'all' && t.category !== state.category) return false;
+            if (state.status !== 'all' && t.status !== state.status) return false;
+            if (q && !(t.name.toLowerCase().includes(q) || t.note.toLowerCase().includes(q))) return false;
+            return true;
+        });
+
+        resultsCount.textContent = `พบ ${filtered.length} จาก ${TOOLS.length} เครื่องมือ`;
+
+        if (filtered.length === 0) {
+            toolsContainer.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        emptyState.classList.add('hidden');
+
+        const grouped = {};
+        filtered.forEach(t => { (grouped[t.category] = grouped[t.category] || []).push(t); });
+
+        toolsContainer.innerHTML = categories
+            .filter(cat => grouped[cat])
+            .map(cat => `
+                <section>
+                    <h2 class="text-lg font-bold text-purple-400 mb-3 border-b border-gray-700 pb-2">${escapeHtml(cat)}</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        ${grouped[cat].map(toolCard).join('')}
+                    </div>
+                </section>
+            `).join('');
+    }
+
+    searchInput.addEventListener('input', () => { state.search = searchInput.value; render(); });
+    categorySelect.addEventListener('change', () => { state.category = categorySelect.value; render(); });
+    statusFilter.addEventListener('click', (e) => {
+        const btn = e.target.closest('.status-btn');
+        if (!btn) return;
+        state.status = btn.dataset.status;
+        [...statusFilter.children].forEach(b => b.className = 'status-btn px-3 py-2 rounded-md text-sm font-semibold bg-gray-700 text-gray-300 hover:bg-gray-600');
+        btn.className = 'status-btn px-3 py-2 rounded-md text-sm font-semibold bg-teal-600 text-white';
+        render();
+    });
+
+    render();
+</script>
+</body>
+</html>

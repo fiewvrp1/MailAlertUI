@@ -296,6 +296,8 @@ def check_mail_loop():
 # (โค้ดส่วนนี้และส่วนที่เหลือถูกต้องแล้ว)
 @app.route("/")
 def index(): return render_template("index.html")
+@app.route("/forensic")
+def forensic(): return render_template("forensic.html")
 @app.route("/logs")
 def logs(): return jsonify(mail_logs[-50:])
 @app.route('/get_completed_scans')
