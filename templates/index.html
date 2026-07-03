@@ -90,6 +90,11 @@
     const sha1ScanResultElement = document.getElementById('sha1ScanResult');
 
     // --- Functions ---
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
     async function performSha1Scan() {
         const sha1 = sha1InputElement.value.trim();
         if (!sha1) {
@@ -147,10 +152,33 @@
             if (response.ok) {
                 const abuseData = result.abuseipdb;
                 const metaData = result.metadefender;
+                const notes = result.notes || [];
                 const locationString = abuseData.countryName || 'N/A';
                 const countryCodeLower = abuseData.countryCode ? abuseData.countryCode.toLowerCase() : '';
 
+                const notesHtml = notes.length ? `
+                <div class="flex flex-wrap gap-2 mb-3">
+                    ${notes.map(n => `<span class="px-2 py-1 rounded bg-yellow-900/50 text-yellow-300 text-xs border border-yellow-700">⚠️ ${escapeHtml(n)}</span>`).join('')}
+                </div>` : '';
+
+                const reportsHtml = (abuseData.recentReports && abuseData.recentReports.length) ? `
+                <div class="pt-2 mt-2 border-t border-gray-600">
+                    <p class="text-gray-400 text-xs mb-2">Recent Reports (${abuseData.reports} total${abuseData.numDistinctUsers ? `, ${abuseData.numDistinctUsers} users` : ''})</p>
+                    <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        ${abuseData.recentReports.map(r => `
+                        <div class="bg-gray-800/60 rounded p-2 text-xs">
+                            <div class="flex justify-between text-gray-400">
+                                <span>${r.reportedAt ? new Date(r.reportedAt).toLocaleDateString() : ''}</span>
+                                <span>${escapeHtml(r.reporterCountryName || '')}</span>
+                            </div>
+                            ${r.categories.length ? `<div class="text-yellow-400 mt-1">${escapeHtml(r.categories.join(', '))}</div>` : ''}
+                            ${r.comment ? `<div class="text-gray-300 mt-1 break-words">${escapeHtml(r.comment)}</div>` : ''}
+                        </div>`).join('')}
+                    </div>
+                </div>` : '';
+
                 scanResultElement.innerHTML = `
+                ${notesHtml}
                 <div class="flex flex-col lg:flex-row gap-4 text-left">
                     <div class="flex-1 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
                         <h3 class="text-lg font-bold text-orange-400 mb-3"><a href="https://www.abuseipdb.com/check/${abuseData.ipAddress}" target="_blank" rel="noopener noreferrer" class="hover:underline">AbuseIPDB Report</a></h3>
@@ -163,7 +191,9 @@
                                 <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">Usage Type</span> <span class="text-gray-200 text-right">${abuseData.usageType || 'N/A'}</span></div>
                                 <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">ASN</span> <span class="text-gray-200 text-right">${abuseData.asn ? `AS${abuseData.asn}` : 'N/A'}</span></div>
                                 <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">Domain</span> <span class="text-gray-200 text-right">${abuseData.domain || 'N/A'}</span></div>
+                                <div class="flex justify-between border-t border-gray-600 py-1"><span class="text-gray-400">Last Reported</span> <span class="text-gray-200 text-right">${abuseData.lastReportedAt ? new Date(abuseData.lastReportedAt).toLocaleString() : 'N/A'}</span></div>
                             </div>
+                            ${reportsHtml}
                         </div>`}
                     </div>
                     <div class="flex-1 p-4 bg-gray-700/50 rounded-lg border border-gray-600">

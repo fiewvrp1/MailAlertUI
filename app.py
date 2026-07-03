@@ -10,6 +10,7 @@ import collections
 import atexit
 from apscheduler.schedulers.background import BackgroundScheduler
 import sys
+import ipaddress
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -77,6 +78,36 @@ folder_configs = [
     {"name": "O365", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAAiOMdRAAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}, 
     {"name": "Threat Prevention", "url": "https://graph.microsoft.com/v1.0/me/mailFolders('AAMkAGVjNDMzMzkwLTI1NjQtNDZiYy1hYzEyLWMwM2I4MzYwMDNiZAAuAAAAAAB8s0HqQpjPSKVeQNxxiOr0AQByAnmCtsn9Rb-VfDqVF9xCAAAv3oh_AAA=')/messages?$top=1&$orderby=receivedDateTime desc", "last_id": None}
 ]
+ABUSEIPDB_CATEGORIES = {
+    3: "Fraud Orders", 4: "DDoS Attack", 5: "FTP Brute-Force", 6: "Ping of Death",
+    7: "Phishing", 8: "Fraud VoIP", 9: "Open Proxy", 10: "Web Spam", 11: "Email Spam",
+    12: "Blog Spam", 13: "VPN IP", 14: "Port Scan", 15: "Hacking", 16: "SQL Injection",
+    17: "Spoofing", 18: "Brute-Force", 19: "Bad Web Bot", 20: "Exploited Host",
+    21: "Web App Attack", 22: "SSH", 23: "IoT Targeted",
+}
+
+def _get_ip_notes(ip_address, abuse_data):
+    notes = []
+    try:
+        ip_obj = ipaddress.ip_address(ip_address)
+        if ip_obj.is_loopback:
+            notes.append("Loopback address")
+        elif ip_obj.is_link_local:
+            notes.append("Link-local address")
+        elif ip_obj.is_private:
+            notes.append("Private/Internal IP address")
+        elif ip_obj.is_reserved:
+            notes.append("Reserved address")
+    except ValueError:
+        pass
+    if abuse_data.get('isPublic') is False and "Private/Internal IP address" not in notes:
+        notes.append("Private/Internal IP address")
+    if abuse_data.get('isWhitelisted'):
+        notes.append("Whitelisted by AbuseIPDB")
+    if abuse_data.get('isTor'):
+        notes.append("Tor exit node")
+    return notes
+
 mail_logs, current_access_token = [], None
 processed_email_ids = collections.deque(maxlen=50)
 completed_scheduled_scans = collections.deque(maxlen=20)
@@ -102,7 +133,7 @@ def play_sound(sound_file_key):
     else: print(f"Warning: Sound file not found for key '{sound_file_key}'.")
 
 def _perform_ip_scan(ip_address):
-    abuse_results, metadefender_results = {}, {}
+    abuse_results, metadefender_results, notes = {}, {}, []
     try:
         abuse_url = 'https://api.abuseipdb.com/api/v2/check'
         abuse_querystring = {'ipAddress': ip_address, 'maxAgeInDays': '90', 'verbose': True}
@@ -110,16 +141,30 @@ def _perform_ip_scan(ip_address):
         response = requests.get(url=abuse_url, headers=abuse_headers, params=abuse_querystring, timeout=10)
         response.raise_for_status()
         data = response.json().get('data', {})
-        abuse_results = {'ipAddress': data.get('ipAddress', 'N/A'),
+        recent_reports = [{
+            'reportedAt': r.get('reportedAt'),
+            'comment': (r.get('comment') or '')[:300],
+            'categories': [ABUSEIPDB_CATEGORIES.get(c, f"Category {c}") for c in r.get('categories', [])],
+            'reporterCountryName': r.get('reporterCountryName'),
+        } for r in data.get('reports', [])[:5]]
+        abuse_results = {'ipAddress': data.get('ipAddress', ip_address),
                          'score': data.get('abuseConfidenceScore', 0),
                          'reports': data.get('totalReports', 0),
+                         'numDistinctUsers': data.get('numDistinctUsers', 0),
+                         'lastReportedAt': data.get('lastReportedAt'),
+                         'isPublic': data.get('isPublic'),
+                         'isWhitelisted': data.get('isWhitelisted', False),
+                         'isTor': data.get('isTor', False),
                          'isp': data.get('isp', 'N/A'), 'usageType': data.get('usageType', 'N/A'),
                          'domain': data.get('domain', 'N/A'),
                          'countryName': data.get('countryName', 'N/A'),
                          'countryCode': data.get('countryCode', 'N/A'),
-                         'asn': data.get('asn', 'N/A')} 
+                         'asn': data.get('asn', 'N/A'),
+                         'recentReports': recent_reports}
+        notes = _get_ip_notes(ip_address, abuse_results)
     except Exception as e:
         abuse_results = {'error': 'Failed to get data from AbuseIPDB.'}
+        notes = _get_ip_notes(ip_address, {})
     try:
         md_url = f"https://api.metadefender.com/v4/ip/{ip_address}"
         md_headers = {'apikey': METADEFENDER_API_KEY}
@@ -133,7 +178,7 @@ def _perform_ip_scan(ip_address):
             metadefender_results = {'error': 'No data found for this IP.'}
     except Exception as e:
         metadefender_results = {'error': 'Failed to get data from MetaDefender.'}
-    return {'abuseipdb': abuse_results, 'metadefender': metadefender_results}
+    return {'abuseipdb': abuse_results, 'metadefender': metadefender_results, 'notes': notes}
 
 def _perform_virustotal_scan(sha1_hash):
     """Performs a file hash scan using the VirusTotal API."""
@@ -225,7 +270,10 @@ def check_mail_loop():
                             log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "helpdesk_mail"
                         elif folder['name'] == 'New Allow':
                             log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject} | {sender}", "email_security_mail"
-                        
+
+                        elif folder['name'] == 'Workbench':
+                            log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "workbench_mail"
+
                         # ✨ เพิ่มเงื่อนไขนี้เข้ามา ✨
                         elif folder['name'] == 'Threat Prevention':
                             log_message, sound_key_to_play = f"📧 [{now_str}] [{folder['name']}] {subject}", "threat_prevention_mail"
