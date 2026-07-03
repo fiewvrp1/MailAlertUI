@@ -1,9 +1,13 @@
+import os
 import requests
 from msal import PublicClientApplication
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # === CONFIG ===
-CLIENT_ID = "81a52509-4aa7-4060-ad96-4859d35701ba"
-TENANT_ID = "b96cc57b-d146-48f5-a381-7cf474c23a9e"
+CLIENT_ID = os.environ["CLIENT_ID"]
+TENANT_ID = os.environ["TENANT_ID"]
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Mail.Read"]
 

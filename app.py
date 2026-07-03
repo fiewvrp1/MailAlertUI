@@ -10,15 +10,31 @@ import collections
 import atexit
 from apscheduler.schedulers.background import BackgroundScheduler
 import sys
+from dotenv import load_dotenv
+
+load_dotenv()
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # === CONFIGURATION ===
-CLIENT_ID = "81a52509-4aa7-4060-ad96-4859d35701ba"
-TENANT_ID = "b96cc57b-d146-48f5-a381-7cf474c23a9e"
+def _require_env(name):
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}. Copy .env.example to .env and fill it in.")
+    return value
+
+CLIENT_ID = _require_env("CLIENT_ID")
+TENANT_ID = _require_env("TENANT_ID")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Mail.Read"]
-ABUSEIPDB_API_KEY = "5c1ce2c76b7fc57ddbf6f448707803c2d388d95cf9d96f7adcd8ac3d68f223795fb35de075a0e3c8"
-METADEFENDER_API_KEY = "4ee3dbcf2b149b12764ae41d5cad9b50"   
-VIRUSTOTAL_API_KEY = "e0ff46c437540f0c21f1e4a0ce1005d71edf03c09828e1d0624aa5a236d34d40"
+ABUSEIPDB_API_KEY = _require_env("ABUSEIPDB_API_KEY")
+METADEFENDER_API_KEY = _require_env("METADEFENDER_API_KEY")
+VIRUSTOTAL_API_KEY = _require_env("VIRUSTOTAL_API_KEY")
 IS_ON_RENDER = os.environ.get('RENDER') == 'true'
 
 def resource_path(relative_path):
